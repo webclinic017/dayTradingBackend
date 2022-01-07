@@ -1,0 +1,11 @@
+{
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "name": "Day Trading DB",
+            "database": "${workspaceFolder:dayTradeBackend}/db.sqlite3"
+        }
+    ],
+    "sqltools.useNodeRuntime": true
+}

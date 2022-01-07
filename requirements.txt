@@ -1,0 +1,2 @@
+Django==3.2.11
+kiteconnect==4.0.0
