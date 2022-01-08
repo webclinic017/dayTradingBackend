@@ -48,14 +48,35 @@ class trackedInstruments(BaseModel):
 
 
 class HistoricalPricesMinute(BaseModel):
-    tracked_instrument  = models.ForeignKey(trackedInstruments,on_delete=models.CASCADE,null=True)
     instrument          = models.ForeignKey(InstrumentList,on_delete=models.CASCADE,null=True)
-    timestamp           = models.DateTimeField()
+    datetime            = models.DateTimeField()
     open_price          = models.FloatField()
     high_price          = models.FloatField()
     low_price           = models.FloatField()
     close_price         = models.FloatField()
-    volume        = models.FloatField()
+    volume              = models.FloatField()
+    tradedate           = models.DateField()
+    def __str__(self):
+        return json.dumps({
+                            'id':self.id,
+                            'instrument_token':self.instrument__instrument_token,
+                            'name':self.instrument__name,
+                            'trading_symbol':self.instrument__tradingsymbol,
+                            'high':self.high_price,
+                            'low':self.low_price,
+                            'open':self.open_price,
+                            'close':self.close_price,
+                            'volume':self.volume
+                            })
+
+class HistoricalPricesDay(BaseModel):
+    instrument          = models.ForeignKey(InstrumentList,on_delete=models.CASCADE,null=True)
+    datetime            = models.DateTimeField()
+    open_price          = models.FloatField()
+    high_price          = models.FloatField()
+    low_price           = models.FloatField()
+    close_price         = models.FloatField()
+    volume              = models.FloatField()
     def __str__(self):
         return json.dumps({
                             'id':self.id,
