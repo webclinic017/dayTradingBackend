@@ -41,9 +41,9 @@ class trackedInstruments(BaseModel):
     def __str__(self):
         return json.dumps({
                             'id':self.id,
-                            'instrument_token':self.instrument__instrument_token,
-                            'name':self.instrument__name,
-                            'trading_symbol':self.instrument__tradingsymbol
+                            'instrument_token':self.instrument.instrument_token,
+                            'name':self.instrument.name,
+                            'trading_symbol':self.instrument.tradingsymbol
                             })
 
 
@@ -59,9 +59,9 @@ class HistoricalPricesMinute(BaseModel):
     def __str__(self):
         return json.dumps({
                             'id':self.id,
-                            'instrument_token':self.instrument__instrument_token,
-                            'name':self.instrument__name,
-                            'trading_symbol':self.instrument__tradingsymbol,
+                            'instrument_token':self.instrument.instrument_token,
+                            'name':self.instrument.name,
+                            'trading_symbol':self.instrument.tradingsymbol,
                             'high':self.high_price,
                             'low':self.low_price,
                             'open':self.open_price,
@@ -80,9 +80,9 @@ class HistoricalPricesDay(BaseModel):
     def __str__(self):
         return json.dumps({
                             'id':self.id,
-                            'instrument_token':self.instrument__instrument_token,
-                            'name':self.instrument__name,
-                            'trading_symbol':self.instrument__tradingsymbol,
+                            'instrument_token':self.instrument.instrument_token,
+                            'name':self.instrument.name,
+                            'trading_symbol':self.instrument.tradingsymbol,
                             'high':self.high_price,
                             'low':self.low_price,
                             'open':self.open_price,
