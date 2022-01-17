@@ -319,26 +319,26 @@ class HistoricalAnalysis:
 
         # More weights to recent data
         if 'sma' in target_indicators:
-            # instrument_df['sma_2']  = Wilder(instrument_df['close_price'],2)
-            # instrument_df['sma_3']  = Wilder(instrument_df['close_price'],3)
-            # instrument_df['sma_4']  = Wilder(instrument_df['close_price'],4)
+            instrument_df['sma_2']  = Wilder(instrument_df['close_price'],2)
+            instrument_df['sma_3']  = Wilder(instrument_df['close_price'],3)
+            instrument_df['sma_4']  = Wilder(instrument_df['close_price'],4)
             instrument_df['sma_5']  = Wilder(instrument_df['close_price'],5)
-            # instrument_df['sma_10'] = Wilder(instrument_df['close_price'],10)
-            # instrument_df['sma_15'] = Wilder(instrument_df['close_price'],15)
+            instrument_df['sma_10'] = Wilder(instrument_df['close_price'],10)
+            instrument_df['sma_15'] = Wilder(instrument_df['close_price'],15)
             instrument_df['sma_20'] = Wilder(instrument_df['close_price'],20)
-            # instrument_df['sma_25'] = Wilder(instrument_df['close_price'],25)
-            # instrument_df['sma_30'] = Wilder(instrument_df['close_price'],30)
-            # instrument_df['sma_35'] = Wilder(instrument_df['close_price'],35)
-            # instrument_df['sma_40'] = Wilder(instrument_df['close_price'],40)
-            # instrument_df['sma_45'] = Wilder(instrument_df['close_price'],45)
-            # instrument_df['sma_50'] = Wilder(instrument_df['close_price'],50)
-            # instrument_df['sma_55'] = Wilder(instrument_df['close_price'],55)
-            # instrument_df['sma_60'] = Wilder(instrument_df['close_price'],60)
+            instrument_df['sma_25'] = Wilder(instrument_df['close_price'],25)
+            instrument_df['sma_30'] = Wilder(instrument_df['close_price'],30)
+            instrument_df['sma_35'] = Wilder(instrument_df['close_price'],35)
+            instrument_df['sma_40'] = Wilder(instrument_df['close_price'],40)
+            instrument_df['sma_45'] = Wilder(instrument_df['close_price'],45)
+            instrument_df['sma_50'] = Wilder(instrument_df['close_price'],50)
+            instrument_df['sma_55'] = Wilder(instrument_df['close_price'],55)
+            instrument_df['sma_60'] = Wilder(instrument_df['close_price'],60)
 
         # SMA Ratio
-            # instrument_df['sma_ratio_15on5'] = instrument_df['sma_15'] / instrument_df['sma_5']
+            instrument_df['sma_ratio_15on5'] = instrument_df['sma_15'] / instrument_df['sma_5']
             instrument_df['sma_ratio_20on5'] = instrument_df['sma_20'] / instrument_df['sma_5']
-            # instrument_df['sma_ratio_30on5'] = instrument_df['sma_30'] / instrument_df['sma_5']
+            instrument_df['sma_ratio_30on5'] = instrument_df['sma_30'] / instrument_df['sma_5']
     
         return instrument_df
 
