@@ -319,7 +319,6 @@ class HistoricalAnalysis:
                 stt_ctt	= 0.00025 * order_size
             else:
                 stt_ctt	= 0
-
             transaction_charges	= 0.0000345 * order_size 
             gst = 0.18 * (brokerage + stt_ctt + transaction_charges) 
             if order_size >= 10000000:
@@ -514,13 +513,14 @@ class HistoricalAnalysis:
         datelist = df.tradedate.unique()
         df_out = pd.DataFrame()
         if strategy == 1:
-            for date in datelist:
+            for date in datelist:                
                 position = "none"
                 previous_position = "none"
                 df_filtered = df[df['tradedate'] == date]
                 df_filtered['position'] = ""
                 total_len_df = len(df_filtered)
                 for row in range(total_len_df):
+                    # print(row)
                     if (row + 1) == total_len_df:
                         position = "none"
                     else:
@@ -646,3 +646,6 @@ class HistoricalAnalysis:
         return df_out
 
 
+
+# output_data_2.loc[3,'instrument_token'] = 2
+# output_data_2
