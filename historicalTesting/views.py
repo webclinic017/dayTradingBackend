@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib.ticker as ticker
 
 
 
@@ -51,6 +52,7 @@ def plot_indicators(instrument_df,top_columns,below_column,horizontal_div = None
         indicator_ax.fill_between(instrument_df['datetime'], horizontal_line, instrument_df['sma_ratio_20on5'], where = (instrument_df['sma_ratio_20on5'] >= horizontal_line), color='g', alpha=0.3, interpolate=True)
         indicator_ax.fill_between(instrument_df['datetime'], horizontal_line, instrument_df['sma_ratio_20on5'], where = (instrument_df['sma_ratio_20on5']  < horizontal_line), color='r', alpha=0.3, interpolate=True)
 
+    price_ax.xaxis.set_major_formatter(ticker.NullFormatter())
     indicator_ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
 
     price_ax.grid(b=True, linestyle='--', alpha=0.5)
@@ -76,10 +78,39 @@ def plot_indicators(instrument_df,top_columns,below_column,horizontal_div = None
     return plt
         
 
+def plot_returns(returns_df,top_columns,bottom_column):
+    fig = plt.figure(figsize=(16,10))
+    fig.subplots_adjust(hspace=0)
+    plt.rcParams.update({'font.size': 14})
+    price_ax = plt.subplot(2,1,1)
+    for col in top_columns:
+        price_ax.plot(returns_df.datetime, returns_df[col], label=col)
 
-        
+    price_ax.legend(loc="upper left", fontsize=12)
 
+    indicator_ax = plt.subplot(2, 1, 2)
+    indicator_ax.plot(returns_df['datetime'],returns_df[bottom_column], color='k', linewidth = 1, alpha=0.7, label=bottom_column)
+    indicator_ax.legend(loc="upper left", fontsize=12)
+    indicator_ax.set_ylabel(bottom_column)
 
+    price_ax.xaxis.set_major_formatter(ticker.NullFormatter())
+    indicator_ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+    price_ax.yaxis.set_major_formatter(ticker.PercentFormatter(xmax=1.0,decimals=2))
+    indicator_ax.yaxis.set_major_formatter(ticker.PercentFormatter(xmax=1.0,decimals=2))    
+
+    price_ax.grid(b=True, linestyle='--', alpha=0.5)
+    indicator_ax.grid(b=True, linestyle='--', alpha=0.5)
+    
+    price_ax.set_facecolor((.94,.95,.98))
+    indicator_ax.set_facecolor((.98,.97,.93))
+    
+    
+    price_ax.margins(0.05, 0.2)
+    indicator_ax.margins(0.05, 0.2)
+
+    price_ax.tick_params(left=False, bottom=False)
+    indicator_ax.tick_params(left=False, bottom=False, labelrotation=45)
+    return plt
 
 # Create your views here.
 class ConnectZerodha:
@@ -102,14 +133,10 @@ class ConnectZerodha:
                 })
 
     def create_kite_session():
-        success = False
-        message = ""
         latest_token = tokens.objects.latest('created_at')
         access_token = latest_token.access_token
         kite = KiteConnect(zerodha_api_key)
         kite.set_access_token(access_token)
-        success = True
-        message = "Session Created"
         return kite
 
 
@@ -284,7 +311,34 @@ class InstrumentDataFetch:
                 })
 
 class HistoricalAnalysis:
+    def calculate_fees(price,type,broker="zerodha",num_units=1.0):
+        if broker == "zerodha":
+            order_size = num_units * price
+            brokerage =  0.0003 * order_size
+            if type == "sell":
+                stt_ctt	= 0.00025 * order_size
+            else:
+                stt_ctt	= 0
 
+            transaction_charges	= 0.0000345 * order_size 
+            gst = 0.18 * (brokerage + stt_ctt + transaction_charges) 
+            if order_size >= 10000000:
+                sebi_charges = (order_size//1000000)*10
+            else:
+                sebi_charges = 0 
+
+            if type == "buy":
+                stamp_charges = 0.00003 * order_size         
+            else:
+                stamp_charges = 0
+            
+            total_fees = brokerage + stt_ctt + transaction_charges + gst + sebi_charges + stamp_charges
+        return total_fees
+
+    def calculate_post_fee_return(sell_price, get_in_price,broker="zerodha",num_units=1):
+        calculated_return = (sell_price*num_units - HistoricalAnalysis.calculate_fees(broker=broker,num_units=num_units,price=sell_price,type="sell") - HistoricalAnalysis.calculate_fees(broker=broker,num_units=num_units,price=get_in_price,type="buy"))/(get_in_price*num_units)-1
+        return calculated_return
+    
     def update_indicator(instrument_token,target_indicators=['return','sma','equal_sma']):
         instrument = trackedInstruments.objects.get(instrument__instrument_token = instrument_token)
         completeData = HistoricalPricesMinute.objects.filter(instrument= instrument.instrument)
@@ -339,66 +393,256 @@ class HistoricalAnalysis:
             instrument_df['sma_ratio_15on5'] = instrument_df['sma_15'] / instrument_df['sma_5']
             instrument_df['sma_ratio_20on5'] = instrument_df['sma_20'] / instrument_df['sma_5']
             instrument_df['sma_ratio_30on5'] = instrument_df['sma_30'] / instrument_df['sma_5']
-    
+            instrument_df['sma_ratio_10on5'] = instrument_df['sma_10'] / instrument_df['sma_5']        
+            instrument_df['sma_ratio_10on3'] = instrument_df['sma_10'] / instrument_df['sma_3']        
+        
         return instrument_df
-
-
-    def define_position(indicator_df):
-        df = indicator_df.sort_values('datetime')
-        datelist = df.tradedate.unique()
-        df_out = pd.DataFrame()
-        for date in datelist:
-            position = "none"
-            previous_position = "none"
-            df_filtered = df[df['tradedate'] == date]
-            df_filtered['position'] = ""
-            total_len_df = len(df_filtered)
-            for row in range(total_len_df):
-                if df_filtered['sma_ratio_20on5'][row] > 1:
-                    if previous_position in ["bear","none"]:
-                        position = "bull"
-                    else:
-                        position = previous_position
-                else:
-                    if previous_position in ["bull"]:
-                        position = "bear"
-                    else:
-                        position = previous_position
-                df_filtered['position'][row] = position
-                previous_position = position
-            df_out = df_out.append(df_filtered)
-        return df_out
-
-
-# Wrong Calculation
-    def calculate_returns(position_df):
+    
+    def calculate_returns(position_df,broker="zerodha",num_units = 1):
         df = position_df.sort_values('datetime')
         datelist = df.tradedate.unique()
         df_out = pd.DataFrame()
+        date_summary = []
+        hwm_summary = []
+        return_summary = []
+        max_dd_summary = []
+        strategy_summary = []
+        total_purchases = []
+        total_sales = []
+        instrument_token = []
+        
         for date in datelist:  
             df_filtered = df[df['tradedate'] == date]
-            df_filtered['holding_price'] = np.nan
+            df_filtered['trade_return'] = 0.0
             total_len_df = len(df_filtered)
-            previous_holding_price = np.nan
-            holding_price = np.nan
             previous_position = "none"
+            calculated_return = 0
+            get_in_price = 0 
+            
+            df_filtered['hwm'] = 1.0
+            df_filtered['drawdown'] = 0.0
+            df_filtered['cumulative_return'] = 0.0
+            df_filtered['purchase_flag'] = 0 
+            df_filtered['sell_flag'] = 0 
+            hwm = 1.0
+            port_return = 1.0
+            max_drawdown = 0.0
+            
+            purchases = 0 
+            sales = 0 
+
 
             for row in range(total_len_df):
                 if df_filtered['position'][row] == "none":
-                    holding_price = np.nan
+                    if previous_position == "bull":
+                        # calculated_return = ((df_filtered['close_price'][row]/get_in_price)-1)
+                        calculated_return = HistoricalAnalysis.calculate_post_fee_return(broker=broker,num_units=num_units,sell_price = df_filtered['close_price'][row], get_in_price= get_in_price)
+                        get_in_price = 0
+                        sales = sales + 1
+                    else:
+                        get_in_price = 0
+                        calculated_return = 0 
                 elif df_filtered['position'][row] == "bull":
-                    holding_price = df_filtered['close_price'][row]
+                    if previous_position in ["none","bear"]:
+                        get_in_price = df_filtered['close_price'][row]
+                        calculated_return = 0 
+                        purchases = purchases + 1
+                    else:
+                        calculated_return = 0 
+
                 elif df_filtered['position'][row] == "bear":
                     if previous_position == "bull":
-                        holding_price = df_filtered['close_price'][row]
+                        calculated_return = HistoricalAnalysis.calculate_post_fee_return(broker=broker,num_units=num_units,sell_price = df_filtered['close_price'][row], get_in_price= get_in_price)
+                        # calculated_return = ((df_filtered['close_price'][row]/get_in_price)-1)
+                        get_in_price = 0
+                        sales = sales + 1
                     else:
-                        holding_price = previous_holding_price
-                df_filtered['holding_price'][row] = holding_price
-                previous_holding_price = holding_price
+                        calculated_return = 0 
+                        get_in_price = 0 
+                    
+                df_filtered['trade_return'][row] = calculated_return
                 previous_position = df_filtered['position'][row]
-            
-            df_out = df_out.append(df_filtered)
-        return df_out
 
+                port_return = port_return * ( 1.0 + calculated_return)
+                # print(port_return)
+                hwm = max(hwm, port_return)
+                drawdown = hwm - port_return 
+                max_drawdown = max(max_drawdown,drawdown)
+                df_filtered['hwm'][row] = hwm
+                df_filtered['drawdown'][row] = drawdown
+                df_filtered['cumulative_return'][row] = port_return
+
+            hwm_summary.append(hwm)
+            return_summary.append(port_return)
+            max_dd_summary.append(max_drawdown)
+            date_summary.append(date)
+            total_sales.append(sales)
+            total_purchases.append(purchases)
+            strategy_summary.append(df_filtered['strategy'][1])
+            instrument_token.append(df_filtered['instrument_token'][1])
+            df_out = df_out.append(df_filtered)
+            
+        data_summary_out = {
+            'instrument_token':instrument_token,
+            'strategy':strategy_summary,
+            'date':date_summary,
+            'day_return':return_summary,
+            'max_drawdown':max_dd_summary,
+            'high_water_mark':hwm,
+            'total_sales':total_sales,
+            'total_purchases':total_purchases,
+        }
+        
+        df_summary_daily = pd.DataFrame(data_summary_out)
+        return {
+                'output_data':df_out,
+                'daily_summary':df_summary_daily
+        }
+
+
+    # Strategy Details
+    strategy_details = {
+                        1:'SMA 20 on 5 > 1',
+                        2:'SMA 15 on 5 > 1',
+                        3:'SMA 30 on 5 > 1',
+                        4:'SMA 10 on 5 > 1',
+                        5:'SMA 10 on 3 > 1',
+                        }
+
+    def define_position(indicator_df,strategy):
+        df = indicator_df.sort_values('datetime')
+        datelist = df.tradedate.unique()
+        df_out = pd.DataFrame()
+        if strategy == 1:
+            for date in datelist:
+                position = "none"
+                previous_position = "none"
+                df_filtered = df[df['tradedate'] == date]
+                df_filtered['position'] = ""
+                total_len_df = len(df_filtered)
+                for row in range(total_len_df):
+                    if (row + 1) == total_len_df:
+                        position = "none"
+                    else:
+                        if df_filtered['sma_ratio_20on5'][row] > 1:
+                            if previous_position in ["bear","none"]:
+                                position = "bull"
+                            else:
+                                position = previous_position
+                        else:
+                            if previous_position in ["bull"]:
+                                position = "bear"
+                            else:
+                                position = previous_position
+                    df_filtered['position'][row] = position
+                    previous_position = position
+                df_out = df_out.append(df_filtered)
+            df_out['strategy'] = str(strategy) +": " +  HistoricalAnalysis.strategy_details[strategy]
+
+        if strategy == 2:
+            for date in datelist:
+                position = "none"
+                previous_position = "none"
+                df_filtered = df[df['tradedate'] == date]
+                df_filtered['position'] = ""
+                total_len_df = len(df_filtered)
+                for row in range(total_len_df):
+                    if (row + 1) == total_len_df:
+                        position = "none"
+                    else:
+                        if df_filtered['sma_ratio_15on5'][row] > 1:
+                            if previous_position in ["bear","none"]:
+                                position = "bull"
+                            else:
+                                position = previous_position
+                        else:
+                            if previous_position in ["bull"]:
+                                position = "bear"
+                            else:
+                                position = previous_position
+                    df_filtered['position'][row] = position
+                    previous_position = position
+                df_out = df_out.append(df_filtered)
+            df_out['strategy'] = str(strategy) +": " + HistoricalAnalysis.strategy_details[strategy]
+
+        if strategy == 3:
+            for date in datelist:
+                position = "none"
+                previous_position = "none"
+                df_filtered = df[df['tradedate'] == date]
+                df_filtered['position'] = ""
+                total_len_df = len(df_filtered)
+                for row in range(total_len_df):
+                    if (row + 1) == total_len_df:
+                        position = "none"
+                    else:
+                        if df_filtered['sma_ratio_30on5'][row] > 1:
+                            if previous_position in ["bear","none"]:
+                                position = "bull"
+                            else:
+                                position = previous_position
+                        else:
+                            if previous_position in ["bull"]:
+                                position = "bear"
+                            else:
+                                position = previous_position
+                    df_filtered['position'][row] = position
+                    previous_position = position
+                df_out = df_out.append(df_filtered)
+            df_out['strategy'] = str(strategy) +": " + HistoricalAnalysis.strategy_details[strategy]
+
+        if strategy == 4:
+            for date in datelist:
+                position = "none"
+                previous_position = "none"
+                df_filtered = df[df['tradedate'] == date]
+                df_filtered['position'] = ""
+                total_len_df = len(df_filtered)
+                for row in range(total_len_df):
+                    if (row + 1) == total_len_df:
+                        position = "none"
+                    else:
+                        if df_filtered['sma_ratio_10on5'][row] > 1:
+                            if previous_position in ["bear","none"]:
+                                position = "bull"
+                            else:
+                                position = previous_position
+                        else:
+                            if previous_position in ["bull"]:
+                                position = "bear"
+                            else:
+                                position = previous_position
+                    df_filtered['position'][row] = position
+                    previous_position = position
+                df_out = df_out.append(df_filtered)
+            df_out['strategy'] = str(strategy) +": " + HistoricalAnalysis.strategy_details[strategy]
+
+        if strategy == 5:
+            for date in datelist:
+                position = "none"
+                previous_position = "none"
+                df_filtered = df[df['tradedate'] == date]
+                df_filtered['position'] = ""
+                total_len_df = len(df_filtered)
+                for row in range(total_len_df):
+                    if (row + 1) == total_len_df:
+                        position = "none"
+                    else:
+                        if df_filtered['sma_ratio_10on3'][row] > 1:
+                            if previous_position in ["bear","none"]:
+                                position = "bull"
+                            else:
+                                position = previous_position
+                        else:
+                            if previous_position in ["bull"]:
+                                position = "bear"
+                            else:
+                                position = previous_position
+                    df_filtered['position'][row] = position
+                    previous_position = position
+                df_out = df_out.append(df_filtered)
+            df_out['strategy'] = str(strategy) +": " + HistoricalAnalysis.strategy_details[strategy]
+        
+        return df_out
 
 

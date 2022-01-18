@@ -7,5 +7,6 @@
             "database": "${workspaceFolder:dayTradeBackend}/db.sqlite3"
         }
     ],
-    "sqltools.useNodeRuntime": true
+    "sqltools.useNodeRuntime": true,
+    "jupyter.jupyterServerType": "local"
 }
