@@ -80,7 +80,7 @@ WSGI_APPLICATION = 'dayTradeBackend.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': BASE_DIR / 'output_db.sqlite3',
     }
 }
 

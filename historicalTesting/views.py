@@ -2,6 +2,7 @@ from cmath import nan
 from curses import beep
 from mmap import ACCESS_COPY
 from sqlite3 import Date
+from sre_constants import SUCCESS
 from django.core.checks import messages
 from django.shortcuts import render
 from credentials import zerodha_api_key,zerodha_secret_key
@@ -14,14 +15,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
-
-
-
-# import numpy as np
-# import datetime as dt
-# import pandas_datareader as pdr
-# import seaborn as sns
-# import matplotlib.pyplot as plt
+import openpyxl
 
 def Wilder(data, periods):
     start = np.where(~np.isnan(data))[0][0] #Check if nans present in beginning
@@ -49,8 +43,8 @@ def plot_indicators(instrument_df,top_columns,below_column,horizontal_div = None
     if horizontal_div:
         horizontal_line = 1
         indicator_ax.axhline(horizontal_line, color = (.5, .5, .5), linestyle = '--', alpha = 0.5)
-        indicator_ax.fill_between(instrument_df['datetime'], horizontal_line, instrument_df['sma_ratio_20on5'], where = (instrument_df['sma_ratio_20on5'] >= horizontal_line), color='g', alpha=0.3, interpolate=True)
-        indicator_ax.fill_between(instrument_df['datetime'], horizontal_line, instrument_df['sma_ratio_20on5'], where = (instrument_df['sma_ratio_20on5']  < horizontal_line), color='r', alpha=0.3, interpolate=True)
+        indicator_ax.fill_between(instrument_df['datetime'], horizontal_line, instrument_df[below_column], where = (instrument_df[below_column] >= horizontal_line), color='g', alpha=0.3, interpolate=True)
+        indicator_ax.fill_between(instrument_df['datetime'], horizontal_line, instrument_df[below_column], where = (instrument_df[below_column]  < horizontal_line), color='r', alpha=0.3, interpolate=True)
 
     price_ax.xaxis.set_major_formatter(ticker.NullFormatter())
     indicator_ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
@@ -226,7 +220,44 @@ class InstrumentsTracking:
                 })
 
 class InstrumentDataFetch:
-    def update_stored_historical_data(token_id,frequency,start,end):
+    def download_all_tracked_instrument_data(frequency,start_date,end_date):
+        tracked_instruments = trackedInstruments.objects.all()
+        count_all = 0
+        total_load = tracked_instruments.count()
+        for instrument in tracked_instruments:
+            instrument_token = instrument.instrument.instrument_token
+            InstrumentDataFetch.download_long_minute_data(
+                                                        token_id=instrument_token,
+                                                        frequency=frequency,
+                                                        start_date=start_date,
+                                                        end_date=end_date
+                                                        )
+
+        
+
+    def download_long_minute_data(token_id,frequency,start_date,end_date):
+        start_date = start_date
+        end_date = end_date
+        start_date_dt = datetime.datetime.strptime(start_date,"%Y-%m-%d").date()
+        end_date_dt = datetime.datetime.strptime(end_date,"%Y-%m-%d").date()
+        diff = (end_date_dt - start_date_dt).days
+        num_loop = diff//6
+        count = 0
+        for i in range(num_loop):
+            if i == 0:
+                start = start_date_dt +  datetime.timedelta(days=5*i)
+                end = start_date_dt +  datetime.timedelta(days=5*i + 5)
+            else:
+                start = end +  datetime.timedelta(days=1)
+                end = start +  datetime.timedelta(5)
+            InstrumentDataFetch.update_stored_historical_data(token_id,frequency,str(start),str(end),long=True)
+            count = count + 1
+            # print(token_id)
+            printProgressBar(count,num_loop)
+            # print(token_id,printProgressBar(count,num_loop))
+            # printProgressBar(count,num_loop))
+
+    def update_stored_historical_data(token_id,frequency,start,end,long=False):
         """
         Give start date and end date in the format YYYY-MM-DD
         Note this deletes existing occurance of historical data in the database
@@ -242,6 +273,7 @@ class InstrumentDataFetch:
         instruments = InstrumentList.objects.filter(instrument_token = token_id)
         delta_days = (end_formatted - start_formatted).days
 
+
         if instruments.count() < 0:
             success = False
             message = "No such instrument"
@@ -256,6 +288,8 @@ class InstrumentDataFetch:
             message = "Minute data is limited to 60 days"
         else:
             instrument = instruments[0]
+            # existing_data = 
+
             try:
                 historical_data = kite.historical_data(token_id,start + " 00:00:00",end + " 23:59:59",frequency)
             except:
@@ -267,40 +301,47 @@ class InstrumentDataFetch:
                 })    
             total = len(historical_data)
             count = 0 
+
             if frequency == "day":
-                existing_data = HistoricalPricesDay.objects.filter(instrument=instrument)
-                existing_data.delete()
                 for data in historical_data:
                     datetime_corrected =  data['date'] + datetime.timedelta(hours=5, minutes=30)
-                    HistoricalPricesDay.objects.create(
-                        instrument          = instrument
-                        ,datetime            = datetime_corrected
-                        ,open_price          = data['open']
-                        ,high_price          = data['high']
-                        ,low_price           = data['low']
-                        ,close_price         = data['close']
-                        ,volume              = data['volume']
-                    )
+                    if HistoricalPricesDay.objects.filter(instrument = instrument, datetime = datetime_corrected).count() == 0:
+                        HistoricalPricesDay.objects.create(
+                            instrument          = instrument
+                            ,datetime            = datetime_corrected
+                            ,open_price          = data['open']
+                            ,high_price          = data['high']
+                            ,low_price           = data['low']
+                            ,close_price         = data['close']
+                            ,volume              = data['volume']
+                            ,tradedate           = datetime_corrected.date()
+                        )
+                    else:
+                        pass
                     count = count + 1
-                    printProgressBar(count,total)
+                    if not long:
+                        printProgressBar(count,total)
 
             elif frequency == "minute":
-                existing_data = HistoricalPricesMinute.objects.filter(instrument=instrument)
-                existing_data.delete()
                 for data in historical_data:
                     datetime_corrected =  data['date'] + datetime.timedelta(hours=5, minutes=30)
-                    HistoricalPricesMinute.objects.create(
-                        instrument           = instrument
-                        ,datetime            = datetime_corrected
-                        ,open_price          = data['open']
-                        ,high_price          = data['high']
-                        ,low_price           = data['low']
-                        ,close_price         = data['close']
-                        ,volume              = data['volume']
-                        ,tradedate           = datetime_corrected.date()
-                    )
+                    # if HistoricalPricesMinute.objects.filter(instrument = instrument, datetime = datetime_corrected).count() == 0:
+                    if HistoricalPricesMinute.objects.filter(instrument = instrument, datetime = datetime_corrected).count() == 0:
+                        HistoricalPricesMinute.objects.create(
+                            instrument           = instrument
+                            ,datetime            = datetime_corrected
+                            ,open_price          = data['open']
+                            ,high_price          = data['high']
+                            ,low_price           = data['low']
+                            ,close_price         = data['close']
+                            ,volume              = data['volume']
+                            ,tradedate           = datetime_corrected.date()
+                        )
+                    else:
+                        pass
                     count = count + 1
-                    printProgressBar(count,total)
+                    if not long:
+                        printProgressBar(count,total)
 
             success = True
             message = "Historical prices downloaded and stored"
@@ -334,11 +375,14 @@ class HistoricalAnalysis:
             total_fees = brokerage + stt_ctt + transaction_charges + gst + sebi_charges + stamp_charges
         return total_fees
 
-    def calculate_post_fee_return(sell_price, get_in_price,broker="zerodha",num_units=1):
-        calculated_return = (sell_price*num_units - HistoricalAnalysis.calculate_fees(broker=broker,num_units=num_units,price=sell_price,type="sell") - HistoricalAnalysis.calculate_fees(broker=broker,num_units=num_units,price=get_in_price,type="buy"))/(get_in_price*num_units)-1
+    def calculate_trade_return(sell_price, get_in_price,broker="zerodha",num_units=1,with_fees=True):
+        if with_fees:
+            calculated_return = (sell_price*num_units - HistoricalAnalysis.calculate_fees(broker=broker,num_units=num_units,price=sell_price,type="sell") - HistoricalAnalysis.calculate_fees(broker=broker,num_units=num_units,price=get_in_price,type="buy"))/(get_in_price*num_units)-1
+        else:
+            calculated_return = (sell_price*num_units)/(get_in_price*num_units)-1
         return calculated_return
     
-    def update_indicator(instrument_token,target_indicators=['return','sma','equal_sma']):
+    def update_indicator(instrument_token,target_indicators=['simple_weighted_sma','equal_sma']):
         instrument = trackedInstruments.objects.get(instrument__instrument_token = instrument_token)
         completeData = HistoricalPricesMinute.objects.filter(instrument= instrument.instrument)
         instrument_token = instrument.instrument.instrument_token
@@ -371,105 +415,107 @@ class HistoricalAnalysis:
             instrument_df['equal_sma_60'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 60).mean())
 
         # More weights to recent data
-        if 'sma' in target_indicators:
-            instrument_df['sma_2']  = Wilder(instrument_df['close_price'],2)
-            instrument_df['sma_3']  = Wilder(instrument_df['close_price'],3)
-            instrument_df['sma_4']  = Wilder(instrument_df['close_price'],4)
-            instrument_df['sma_5']  = Wilder(instrument_df['close_price'],5)
-            instrument_df['sma_10'] = Wilder(instrument_df['close_price'],10)
-            instrument_df['sma_15'] = Wilder(instrument_df['close_price'],15)
-            instrument_df['sma_20'] = Wilder(instrument_df['close_price'],20)
-            instrument_df['sma_25'] = Wilder(instrument_df['close_price'],25)
-            instrument_df['sma_30'] = Wilder(instrument_df['close_price'],30)
-            instrument_df['sma_35'] = Wilder(instrument_df['close_price'],35)
-            instrument_df['sma_40'] = Wilder(instrument_df['close_price'],40)
-            instrument_df['sma_45'] = Wilder(instrument_df['close_price'],45)
-            instrument_df['sma_50'] = Wilder(instrument_df['close_price'],50)
-            instrument_df['sma_55'] = Wilder(instrument_df['close_price'],55)
-            instrument_df['sma_60'] = Wilder(instrument_df['close_price'],60)
+        if 'simple_weighted_sma' in target_indicators:
+            instrument_df['weighted_sma_2']  = Wilder(instrument_df['close_price'],2)
+            instrument_df['weighted_sma_3']  = Wilder(instrument_df['close_price'],3)
+            instrument_df['weighted_sma_4']  = Wilder(instrument_df['close_price'],4)
+            instrument_df['weighted_sma_5']  = Wilder(instrument_df['close_price'],5)
+            instrument_df['weighted_sma_10'] = Wilder(instrument_df['close_price'],10)
+            instrument_df['weighted_sma_15'] = Wilder(instrument_df['close_price'],15)
+            instrument_df['weighted_sma_20'] = Wilder(instrument_df['close_price'],20)
+            instrument_df['weighted_sma_25'] = Wilder(instrument_df['close_price'],25)
+            instrument_df['weighted_sma_30'] = Wilder(instrument_df['close_price'],30)
+            instrument_df['weighted_sma_35'] = Wilder(instrument_df['close_price'],35)
+            instrument_df['weighted_sma_40'] = Wilder(instrument_df['close_price'],40)
+            instrument_df['weighted_sma_45'] = Wilder(instrument_df['close_price'],45)
+            instrument_df['weighted_sma_50'] = Wilder(instrument_df['close_price'],50)
+            instrument_df['weighted_sma_55'] = Wilder(instrument_df['close_price'],55)
+            instrument_df['weighted_sma_60'] = Wilder(instrument_df['close_price'],60)
 
         # SMA Ratio
-            instrument_df['sma_ratio_15on5'] = instrument_df['sma_15'] / instrument_df['sma_5']
-            instrument_df['sma_ratio_20on5'] = instrument_df['sma_20'] / instrument_df['sma_5']
-            instrument_df['sma_ratio_30on5'] = instrument_df['sma_30'] / instrument_df['sma_5']
-            instrument_df['sma_ratio_10on5'] = instrument_df['sma_10'] / instrument_df['sma_5']        
-            instrument_df['sma_ratio_10on3'] = instrument_df['sma_10'] / instrument_df['sma_3']        
+            instrument_df['weighted_sma_ratio_15on5'] = instrument_df['weighted_sma_15'] / instrument_df['weighted_sma_5']
+            instrument_df['weighted_sma_ratio_20on5'] = instrument_df['weighted_sma_20'] / instrument_df['weighted_sma_5']
+            instrument_df['weighted_sma_ratio_30on5'] = instrument_df['weighted_sma_30'] / instrument_df['weighted_sma_5']
+            instrument_df['weighted_sma_ratio_10on5'] = instrument_df['weighted_sma_10'] / instrument_df['weighted_sma_5']        
+            instrument_df['weighted_sma_ratio_10on3'] = instrument_df['weighted_sma_10'] / instrument_df['weighted_sma_3']        
         
         return instrument_df
     
-    def calculate_returns(position_df,broker="zerodha",num_units = 1):
-        df = position_df.sort_values('datetime')
+    def calculate_returns(position_df,broker="zerodha",num_units = 1,with_fees=True):
+        """
+        Provide sorted positions dataframes 
+        """
+        # print(df)
+        df = position_df.sort_values(by=['datetime'], ascending=True)
         datelist = df.tradedate.unique()
         df_out = pd.DataFrame()
         date_summary = []
         hwm_summary = []
         return_summary = []
         max_dd_summary = []
-        strategy_summary = []
+        strategy_cat = []
+        strategy_sub_cat = []
+        strategy_details = []
         total_purchases = []
         total_sales = []
         instrument_token = []
+        df['trade_return'] = 0.0
+        df['hwm'] = 1.0
+        df['drawdown'] = 0.0
+        df['cumulative_return'] = 0.0
+        df['purchase_flag'] = 0 
+        df['sell_flag'] = 0 
+        df['with_fees'] = with_fees
         
         for date in datelist:  
             df_filtered = df[df['tradedate'] == date]
-            df_filtered['trade_return'] = 0.0
             total_len_df = len(df_filtered)
             previous_position = "none"
             calculated_return = 0
             get_in_price = 0 
-            
-            df_filtered['hwm'] = 1.0
-            df_filtered['drawdown'] = 0.0
-            df_filtered['cumulative_return'] = 0.0
-            df_filtered['purchase_flag'] = 0 
-            df_filtered['sell_flag'] = 0 
             hwm = 1.0
             port_return = 1.0
             max_drawdown = 0.0
-            
             purchases = 0 
             sales = 0 
 
-
+            df_filtered.reset_index(inplace = True, drop = True)                
             for row in range(total_len_df):
-                if df_filtered['position'][row] == "none":
+                if df_filtered.at[row,'position'] == "none":
                     if previous_position == "bull":
-                        # calculated_return = ((df_filtered['close_price'][row]/get_in_price)-1)
-                        calculated_return = HistoricalAnalysis.calculate_post_fee_return(broker=broker,num_units=num_units,sell_price = df_filtered['close_price'][row], get_in_price= get_in_price)
+                        calculated_return = HistoricalAnalysis.calculate_trade_return(broker=broker,num_units=num_units,sell_price = df_filtered.at[row,'close_price'], get_in_price= get_in_price,with_fees=with_fees)
                         get_in_price = 0
                         sales = sales + 1
                     else:
                         get_in_price = 0
                         calculated_return = 0 
-                elif df_filtered['position'][row] == "bull":
+                elif df_filtered.at[row,'position'] == "bull":
                     if previous_position in ["none","bear"]:
-                        get_in_price = df_filtered['close_price'][row]
+                        get_in_price = df_filtered.at[row,'close_price']
                         calculated_return = 0 
                         purchases = purchases + 1
                     else:
                         calculated_return = 0 
 
-                elif df_filtered['position'][row] == "bear":
+                elif df_filtered.at[row,'position'] == "bear":
                     if previous_position == "bull":
-                        calculated_return = HistoricalAnalysis.calculate_post_fee_return(broker=broker,num_units=num_units,sell_price = df_filtered['close_price'][row], get_in_price= get_in_price)
-                        # calculated_return = ((df_filtered['close_price'][row]/get_in_price)-1)
+                        calculated_return = HistoricalAnalysis.calculate_trade_return(broker=broker,num_units=num_units,sell_price = df_filtered.at[row,'close_price'], get_in_price= get_in_price,with_fees=with_fees)
                         get_in_price = 0
                         sales = sales + 1
                     else:
                         calculated_return = 0 
                         get_in_price = 0 
                     
-                df_filtered['trade_return'][row] = calculated_return
-                previous_position = df_filtered['position'][row]
+                df_filtered.at[row,'trade_return'] = calculated_return
+                previous_position = df_filtered.at[row,'position']
 
                 port_return = port_return * ( 1.0 + calculated_return)
-                # print(port_return)
                 hwm = max(hwm, port_return)
                 drawdown = hwm - port_return 
                 max_drawdown = max(max_drawdown,drawdown)
-                df_filtered['hwm'][row] = hwm
-                df_filtered['drawdown'][row] = drawdown
-                df_filtered['cumulative_return'][row] = port_return
+                df_filtered.at[row,'hwm'] = hwm
+                df_filtered.at[row,'drawdown'] = drawdown
+                df_filtered.at[row,'cumulative_return'] = port_return
 
             hwm_summary.append(hwm)
             return_summary.append(port_return)
@@ -477,13 +523,19 @@ class HistoricalAnalysis:
             date_summary.append(date)
             total_sales.append(sales)
             total_purchases.append(purchases)
-            strategy_summary.append(df_filtered['strategy'][1])
-            instrument_token.append(df_filtered['instrument_token'][1])
+            strategy_cat.append(df_filtered['strategy_cat'][0])
+            strategy_sub_cat.append(df_filtered['sub_cat'][0])
+            strategy_details.append(df_filtered['description'][0])
+
+            instrument_token.append(df_filtered['instrument_token'][0])
             df_out = df_out.append(df_filtered)
             
         data_summary_out = {
             'instrument_token':instrument_token,
-            'strategy':strategy_summary,
+            'strategy_cat':strategy_cat,
+            'strategy_sub_cat':strategy_sub_cat,
+            'strategy_details':strategy_details,
+            'with_fees':with_fees,
             'date':date_summary,
             'day_return':return_summary,
             'max_drawdown':max_dd_summary,
@@ -499,32 +551,102 @@ class HistoricalAnalysis:
         }
 
 
-    # Strategy Details
-    strategy_details = {
-                        1:'SMA 20 on 5 > 1',
-                        2:'SMA 15 on 5 > 1',
-                        3:'SMA 30 on 5 > 1',
-                        4:'SMA 10 on 5 > 1',
-                        5:'SMA 10 on 3 > 1',
-                        }
+    def calculate_all_strategies(write_output_data = False):
+        strategies = HistoricalAnalysis.strategy_sub_category_dict
+        with_fees = True
+        tracked_instruments = trackedInstruments.objects.all()
+        count_all = 0
+        count_strategy = 0 
+        count_token = 0 
+        total_load = tracked_instruments.count() * len(list(strategies.keys()))
+        for instrument in tracked_instruments:
+            instrument_token = instrument.instrument.instrument_token
+            df = HistoricalAnalysis.update_indicator(instrument_token,list(strategies.keys()))
+            for strategy in strategies:
+                sub_strategies = strategies[strategy]
+                for sub_strategy in sub_strategies:
+                    df_sub_strategy = HistoricalAnalysis.define_position(indicator_df=df,strategy_category=str(strategy),strategy_sub_category=str(sub_strategy))                    
+                    df_return = HistoricalAnalysis.calculate_returns(df_sub_strategy,num_units=1,with_fees=with_fees)            
+                    daily_summary = df_return['daily_summary']
+                    if count_all == 0:
+                        comparative_summary = daily_summary
+                    else:
+                        comparative_summary = comparative_summary.append(daily_summary)
+                    count_all = count_all + 1
+                count_strategy = count_strategy + 1
+                printProgressBar(count_strategy,total_load)
+            if count_token == 0:
+                df_out = df
+            else:
+                df_out = df_out.append(df)
+            count_token = count_token + 1
+        print('Writing Excel Summary')    
+        comparative_summary.reset_index(inplace = True, drop = True)
+        book1 = openpyxl.load_workbook('/Users/shashwatyadav/Desktop/Trading Outputs/TradingOutputSummary.xlsx')
+        writer1 = pd.ExcelWriter('/Users/shashwatyadav/Desktop/Trading Outputs/TradingOutputSummary.xlsx', engine='openpyxl') 
+        writer1.book = book1
+        writer1.sheets = dict((ws.title, ws) for ws in book1.worksheets)
+        comparative_summary.to_excel(writer1, "Output")
+        writer1.save()
+        if write_output_data:
+            df_out.reset_index(inplace = True, drop = True)
+            df_out['datetime'] = str(df_out['datetime'])
+            df_out['tradedate'] = str(df_out['tradedate'])
+            print('Writing Output Data')    
+            book2 = openpyxl.load_workbook('/Users/shashwatyadav/Desktop/Trading Outputs/TradingOutputData.xlsx')
+            writer2 = pd.ExcelWriter('/Users/shashwatyadav/Desktop/Trading Outputs/TradingOutputData.xlsx', engine='openpyxl') 
+            writer2.book = book2
+            writer2.sheets = dict((ws.title, ws) for ws in book2.worksheets)
+            df.to_excel(writer2,"Data")
+            writer2.save()
+        
+        output = {
+            'message':'calculated return',
+            'success':True
+            }
+        return output
 
-    def define_position(indicator_df,strategy):
-        df = indicator_df.sort_values('datetime')
+
+    strategy_sub_category_dict = {
+                            'simple_weighted_sma':{
+                                '20_5':{
+                                    'up_variable': 'weighted_sma_ratio_20on5',
+                                    'down_variable':'weighted_sma_ratio_20on5',
+                                    'details':'Weighted SMA 20 on 5 > 1'
+                                    },
+                                '10_3':{
+                                    'up_variable': 'weighted_sma_ratio_10on3',
+                                    'down_variable':'weighted_sma_ratio_10on3',
+                                    'details':'Weighted SMA 10 on 3 > 1'
+                                    },
+                                '30_5':{
+                                    'up_variable': 'weighted_sma_ratio_30on5',
+                                    'down_variable':'weighted_sma_ratio_30on5',
+                                    'details':'Weighted SMA 30 on 5 > 1'
+                                    }    
+                                }
+                            }
+
+
+    def define_position(indicator_df,strategy_category,strategy_sub_category):
+        df = indicator_df.sort_values(by=['datetime'], ascending=True)
         datelist = df.tradedate.unique()
         df_out = pd.DataFrame()
-        if strategy == 1:
+        df['position'] = ""
+        if strategy_category == "simple_weighted_sma":
             for date in datelist:                
                 position = "none"
                 previous_position = "none"
                 df_filtered = df[df['tradedate'] == date]
-                df_filtered['position'] = ""
                 total_len_df = len(df_filtered)
+                df_filtered.reset_index(inplace = True, drop = True)
                 for row in range(total_len_df):
-                    # print(row)
                     if (row + 1) == total_len_df:
                         position = "none"
-                    else:
-                        if df_filtered['sma_ratio_20on5'][row] > 1:
+                    else:                        
+                        target_up_indicator = df_filtered.at[row,((HistoricalAnalysis.strategy_sub_category_dict[strategy_category])[strategy_sub_category])['up_variable']]
+                        # target_down_indicator = df_filtered.at[row,((HistoricalAnalysis.strategy_sub_category_dict[strategy_category])[strategy_sub_category])['down_variable']]
+                        if target_up_indicator > 1:
                             if previous_position in ["bear","none"]:
                                 position = "bull"
                             else:
@@ -534,117 +656,23 @@ class HistoricalAnalysis:
                                 position = "bear"
                             else:
                                 position = previous_position
-                    df_filtered['position'][row] = position
+                                
+                    df_filtered.at[row,'position'] = position
+                    # df_filtered.loc[row,position_index] = position
                     previous_position = position
                 df_out = df_out.append(df_filtered)
-            df_out['strategy'] = str(strategy) +": " +  HistoricalAnalysis.strategy_details[strategy]
-
-        if strategy == 2:
-            for date in datelist:
-                position = "none"
-                previous_position = "none"
-                df_filtered = df[df['tradedate'] == date]
-                df_filtered['position'] = ""
-                total_len_df = len(df_filtered)
-                for row in range(total_len_df):
-                    if (row + 1) == total_len_df:
-                        position = "none"
-                    else:
-                        if df_filtered['sma_ratio_15on5'][row] > 1:
-                            if previous_position in ["bear","none"]:
-                                position = "bull"
-                            else:
-                                position = previous_position
-                        else:
-                            if previous_position in ["bull"]:
-                                position = "bear"
-                            else:
-                                position = previous_position
-                    df_filtered['position'][row] = position
-                    previous_position = position
-                df_out = df_out.append(df_filtered)
-            df_out['strategy'] = str(strategy) +": " + HistoricalAnalysis.strategy_details[strategy]
-
-        if strategy == 3:
-            for date in datelist:
-                position = "none"
-                previous_position = "none"
-                df_filtered = df[df['tradedate'] == date]
-                df_filtered['position'] = ""
-                total_len_df = len(df_filtered)
-                for row in range(total_len_df):
-                    if (row + 1) == total_len_df:
-                        position = "none"
-                    else:
-                        if df_filtered['sma_ratio_30on5'][row] > 1:
-                            if previous_position in ["bear","none"]:
-                                position = "bull"
-                            else:
-                                position = previous_position
-                        else:
-                            if previous_position in ["bull"]:
-                                position = "bear"
-                            else:
-                                position = previous_position
-                    df_filtered['position'][row] = position
-                    previous_position = position
-                df_out = df_out.append(df_filtered)
-            df_out['strategy'] = str(strategy) +": " + HistoricalAnalysis.strategy_details[strategy]
-
-        if strategy == 4:
-            for date in datelist:
-                position = "none"
-                previous_position = "none"
-                df_filtered = df[df['tradedate'] == date]
-                df_filtered['position'] = ""
-                total_len_df = len(df_filtered)
-                for row in range(total_len_df):
-                    if (row + 1) == total_len_df:
-                        position = "none"
-                    else:
-                        if df_filtered['sma_ratio_10on5'][row] > 1:
-                            if previous_position in ["bear","none"]:
-                                position = "bull"
-                            else:
-                                position = previous_position
-                        else:
-                            if previous_position in ["bull"]:
-                                position = "bear"
-                            else:
-                                position = previous_position
-                    df_filtered['position'][row] = position
-                    previous_position = position
-                df_out = df_out.append(df_filtered)
-            df_out['strategy'] = str(strategy) +": " + HistoricalAnalysis.strategy_details[strategy]
-
-        if strategy == 5:
-            for date in datelist:
-                position = "none"
-                previous_position = "none"
-                df_filtered = df[df['tradedate'] == date]
-                df_filtered['position'] = ""
-                total_len_df = len(df_filtered)
-                for row in range(total_len_df):
-                    if (row + 1) == total_len_df:
-                        position = "none"
-                    else:
-                        if df_filtered['sma_ratio_10on3'][row] > 1:
-                            if previous_position in ["bear","none"]:
-                                position = "bull"
-                            else:
-                                position = previous_position
-                        else:
-                            if previous_position in ["bull"]:
-                                position = "bear"
-                            else:
-                                position = previous_position
-                    df_filtered['position'][row] = position
-                    previous_position = position
-                df_out = df_out.append(df_filtered)
-            df_out['strategy'] = str(strategy) +": " + HistoricalAnalysis.strategy_details[strategy]
+            df_out['strategy_cat'] = strategy_category
+            df_out['sub_cat'] = strategy_sub_category
+            df_out['description'] = ((HistoricalAnalysis.strategy_sub_category_dict[strategy_category])[strategy_sub_category])['details']
         
+        df_out.reset_index(inplace = True, drop = True)                
         return df_out
 
+
+        
+
+    # def calculate_all_strategies():
+    #     pass
 
 
 # output_data_2.loc[3,'instrument_token'] = 2

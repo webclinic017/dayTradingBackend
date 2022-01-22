@@ -77,6 +77,7 @@ class HistoricalPricesDay(BaseModel):
     low_price           = models.FloatField()
     close_price         = models.FloatField()
     volume              = models.FloatField()
+    tradedate           = models.DateField()
     def __str__(self):
         return json.dumps({
                             'id':self.id,
