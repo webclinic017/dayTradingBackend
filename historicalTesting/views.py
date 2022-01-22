@@ -510,6 +510,8 @@ class HistoricalAnalysis:
             sub_strategies = strategies[strategy]
             for sub_strategy in sub_strategies:
                 total_strategies_to_calculate = total_strategies_to_calculate + 1
+        
+        total_load = total_strategies_to_calculate * tracked_instruments.count()
 
         for instrument in tracked_instruments:
             instrument_token = instrument.instrument.instrument_token
@@ -525,8 +527,10 @@ class HistoricalAnalysis:
                     else:
                         comparative_summary = comparative_summary.append(daily_summary)
                     count_all = count_all + 1
-                    printProgressBar(count_all,total_strategies_to_calculate)
+                    printProgressBar(count_all,total_load)
+                    # print(count_all)
                 count_strategy = count_strategy + 1
+                
             if count_token == 0:
                 df_out = df
             else:
@@ -534,7 +538,7 @@ class HistoricalAnalysis:
             count_token = count_token + 1
         
         
-        print('Writing Excel Summary')    
+        # print('Writing Excel Summary')    
         comparative_summary.reset_index(inplace = True, drop = True)
         book1 = openpyxl.load_workbook('/Users/shashwatyadav/Projects/DayTradingAutomation/TradingOutputSummary.xlsx')
         writer1 = pd.ExcelWriter('/Users/shashwatyadav/Projects/DayTradingAutomation/TradingOutputSummary.xlsx', engine='openpyxl') 
