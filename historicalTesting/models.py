@@ -27,6 +27,9 @@ class InstrumentList(BaseModel):
     instrument_type     = models.CharField(max_length=50,db_index=True)
     segment             = models.CharField(max_length=50,db_index=True)
     exchange            = models.CharField(max_length=50,db_index=True)
+    for_strategy        = models.BooleanField(default=False)
+    for_data            = models.BooleanField(default=False)
+
     def __str__(self):
         return json.dumps({ 
                             'id':self.id,
@@ -36,15 +39,17 @@ class InstrumentList(BaseModel):
                             'exchange_token':self.exchange_token
                             })
 
-class trackedInstruments(BaseModel):
-    instrument    = models.ForeignKey(InstrumentList,on_delete=models.CASCADE,null=True)
-    def __str__(self):
-        return json.dumps({
-                            'id':self.id,
-                            'instrument_token':self.instrument.instrument_token,
-                            'name':self.instrument.name,
-                            'trading_symbol':self.instrument.tradingsymbol
-                            })
+# class trackedInstruments(BaseModel):
+#     instrument    = models.ForeignKey(InstrumentList,on_delete=models.CASCADE,null=True)
+#     for_strategy  = models.BooleanField(default=False)
+#     for_data      = models.BooleanField(default=True)
+#     def __str__(self):
+#         return json.dumps({
+#                             'id':self.id,
+#                             'instrument_token':self.instrument.instrument_token,
+#                             'name':self.instrument.name,
+#                             'trading_symbol':self.instrument.tradingsymbol
+#                             })
 
 
 class HistoricalPricesMinute(BaseModel):

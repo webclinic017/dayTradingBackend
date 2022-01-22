@@ -186,52 +186,70 @@ class InstrumentsTracking:
                  'message':message
                 })
 
-    def track_instrument(token_id):
+    def update_instrument_tracking(token_id,for_data=True,for_strategy=False):
         success = False
         message = ""
         instrument = InstrumentList.objects.get(instrument_token = token_id)
         # print(instruments[0].name,instruments[0].instrument_token)
-        existing_instruments  = trackedInstruments.objects.filter(instrument = instrument)
+        # existing_instruments  = trackedInstruments.objects.filter(instrument = instrument)
+        instrument.for_data = for_data
+        instrument.for_strategy = for_strategy
+        instrument.save()
 
-        if existing_instruments.count() > 0:
-            success = False
-            message = "Instrument already tracked"
-        else:
-            success = True
-            new_tracked_instrument = trackedInstruments.objects.create(instrument = instrument)
-            message = "Instrument added for tracking"
+        success = True
+        # new_tracked_instrument = trackedInstruments.objects.create(instrument = instrument)
+        message = "Instrument tracking updated"
         return ({
                  'status':success,
                  'message':message
                 })
                
-    def untrack_instrument(token_id):
-        instruments  = trackedInstruments.objects.filter(instrument__instrument_token = token_id)
-        if instruments.count() == 0:
-            success = False
-            message = "Instrument not present"
-        else:
-            success = True
-            instruments.delete()
-            message = "Instrument removed from tracking"
-        return ({
-                 'status':success,
-                 'message':message
-                })
+    # def untrack_instrument(token_id):
+    #     instruments  = trackedInstruments.objects.filter(instrument__instrument_token = token_id)
+    #     if instruments.count() == 0:
+    #         success = False
+    #         message = "Instrument not present"
+    #     else:
+    #         success = True
+    #         instruments.delete()
+    #         message = "Instrument removed from tracking"
+    #     return ({
+    #              'status':success,
+    #              'message':message
+    #             })
 
 class InstrumentDataFetch:
     def download_all_tracked_instrument_data(frequency,start_date,end_date):
-        tracked_instruments = trackedInstruments.objects.all()
+        # tracked_instruments = trackedInstruments.objects.all()
+        if frequency == "minute":
+            tracked_instruments = InstrumentList.objects.filter(for_data = True,for_strategy=True)
+        else:
+            tracked_instruments = InstrumentList.objects.filter(for_data = True)
+
         count_all = 0
         total_load = tracked_instruments.count()
         for instrument in tracked_instruments:
-            instrument_token = instrument.instrument.instrument_token
-            InstrumentDataFetch.download_long_minute_data(
-                                                        token_id=instrument_token,
-                                                        frequency=frequency,
-                                                        start_date=start_date,
-                                                        end_date=end_date
-                                                        )
+            instrument_token = instrument.instrument_token
+            if frequency == "minute":
+                InstrumentDataFetch.download_long_minute_data(
+                                                            token_id=instrument_token,
+                                                            frequency=frequency,
+                                                            start_date=start_date,
+                                                            end_date=end_date
+                                                            )
+                count_all = count_all + 1
+                print(str(count_all) + "/" + str(total_load))
+            else:
+                InstrumentDataFetch.update_stored_historical_data(
+                                                            token_id=instrument_token,
+                                                            frequency=frequency,
+                                                            start=start_date,
+                                                            end=end_date,
+                                                            long=True
+                                                            )
+                count_all = count_all + 1
+                printProgressBar(count_all,total_load)
+
 
         
 
@@ -406,6 +424,7 @@ class HistoricalAnalysis:
         total_purchases = []
         total_sales = []
         instrument_token = []
+        instrument_name = []
         df['trade_return'] = 0.0
         df['hwm'] = 1.0
         df['drawdown'] = 0.0
@@ -467,18 +486,20 @@ class HistoricalAnalysis:
             hwm_summary.append(hwm)
             return_summary.append(port_return)
             max_dd_summary.append(max_drawdown)
+            instrument_name.append(df_filtered['instrument_name'][0])
             date_summary.append(date)
             total_sales.append(sales)
             total_purchases.append(purchases)
+            
             strategy_cat.append(df_filtered['strategy_cat'][0])
             strategy_sub_cat.append(df_filtered['sub_cat'][0])
             strategy_details.append(df_filtered['description'][0])
-
             instrument_token.append(df_filtered['instrument_token'][0])
             df_out = df_out.append(df_filtered)
             
         data_summary_out = {
             'instrument_token':instrument_token,
+            'instrument_name':instrument_name,
             'strategy_cat':strategy_cat,
             'strategy_sub_cat':strategy_sub_cat,
             'strategy_details':strategy_details,
@@ -501,7 +522,8 @@ class HistoricalAnalysis:
     def calculate_all_strategies(write_output_data = False):
         strategies = HistoricalAnalysis.strategy_sub_category_dict
         with_fees = True
-        tracked_instruments = trackedInstruments.objects.all()
+        # tracked_instruments = trackedInstruments.objects.all()
+        tracked_instruments = InstrumentList.objects.filter(for_strategy = True)
         count_all = 0
         count_strategy = 0 
         count_token = 0 
@@ -514,7 +536,7 @@ class HistoricalAnalysis:
         total_load = total_strategies_to_calculate * tracked_instruments.count()
 
         for instrument in tracked_instruments:
-            instrument_token = instrument.instrument.instrument_token
+            instrument_token = instrument.instrument_token
             df = HistoricalAnalysis.update_indicator(instrument_token,list(strategies.keys()))
             for strategy in strategies:
                 sub_strategies = strategies[strategy]
@@ -539,6 +561,7 @@ class HistoricalAnalysis:
         
         
         # print('Writing Excel Summary')    
+        comparative_summary['day_return'] = comparative_summary['day_return'] - 1
         comparative_summary.reset_index(inplace = True, drop = True)
         book1 = openpyxl.load_workbook('/Users/shashwatyadav/Projects/DayTradingAutomation/TradingOutputSummary.xlsx')
         writer1 = pd.ExcelWriter('/Users/shashwatyadav/Projects/DayTradingAutomation/TradingOutputSummary.xlsx', engine='openpyxl') 
@@ -567,36 +590,39 @@ class HistoricalAnalysis:
 
 
     def update_indicator(instrument_token,target_indicators=['simple_weighted_sma','equal_sma']):
-        instrument = trackedInstruments.objects.get(instrument__instrument_token = instrument_token)
-        completeData = HistoricalPricesMinute.objects.filter(instrument= instrument.instrument)
-        instrument_token = instrument.instrument.instrument_token
+        # instrument = trackedInstruments.objects.get(instrument__instrument_token = instrument_token)
+        instrument = InstrumentList.objects.get(instrument_token = instrument_token)
+        completeData = HistoricalPricesMinute.objects.filter(instrument= instrument)
+        instrument_token = instrument.instrument_token
+        instrument_name = instrument.name
         instrument_data = []
-        for data in completeData:
-            instrument_data.append([instrument_token,data.datetime, data.tradedate, data.open_price, data.close_price, data.high_price, data.low_price, data.volume])
 
-        instrument_df = pd.DataFrame(instrument_data, columns = ['instrument_token','datetime','tradedate','open_price', 'close_price','high_price','low_price','volume'])
+        for data in completeData:
+            instrument_data.append([instrument_token,instrument_name,data.datetime, data.tradedate, data.open_price, data.close_price, data.high_price, data.low_price, data.volume])
+
+        instrument_df = pd.DataFrame(instrument_data, columns = ['instrument_token','instrument_name','datetime','tradedate','open_price', 'close_price','high_price','low_price','volume'])
         
         # Minute Return Update
         if 'return' in target_indicators:
-            instrument_df['minute_return'] = instrument_df.groupby('instrument_token')['close_price'].pct_change() 
+            instrument_df['minute_return'] = instrument_df['close_price'].pct_change() 
 
         # Simple Moving Averages - Equal Weighted
         if 'equal_sma' in target_indicators:
-            instrument_df['equal_sma_2'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 2).mean())        
-            instrument_df['equal_sma_3'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 3).mean())        
-            instrument_df['equal_sma_4'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 4).mean())        
-            instrument_df['equal_sma_5'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 5).mean())        
-            instrument_df['equal_sma_10'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 10).mean())
-            instrument_df['equal_sma_15'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 15).mean())
-            instrument_df['equal_sma_20'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 20).mean())
-            instrument_df['equal_sma_25'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 25).mean())
-            instrument_df['equal_sma_30'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 30).mean())
-            instrument_df['equal_sma_35'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 35).mean())
-            instrument_df['equal_sma_40'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 40).mean())
-            instrument_df['equal_sma_45'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 45).mean())
-            instrument_df['equal_sma_50'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 50).mean())
-            instrument_df['equal_sma_55'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 55).mean())
-            instrument_df['equal_sma_60'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 60).mean())
+            instrument_df['equal_sma_2']  = instrument_df['close_price'].transform(lambda x: x.rolling(window = 2).mean())        
+            instrument_df['equal_sma_3']  = instrument_df['close_price'].transform(lambda x: x.rolling(window = 3).mean())        
+            instrument_df['equal_sma_4']  = instrument_df['close_price'].transform(lambda x: x.rolling(window = 4).mean())        
+            instrument_df['equal_sma_5']  = instrument_df['close_price'].transform(lambda x: x.rolling(window = 5).mean())        
+            instrument_df['equal_sma_10'] = instrument_df['close_price'].transform(lambda x: x.rolling(window = 10).mean())
+            instrument_df['equal_sma_15'] = instrument_df['close_price'].transform(lambda x: x.rolling(window = 15).mean())
+            instrument_df['equal_sma_20'] = instrument_df['close_price'].transform(lambda x: x.rolling(window = 20).mean())
+            instrument_df['equal_sma_25'] = instrument_df['close_price'].transform(lambda x: x.rolling(window = 25).mean())
+            instrument_df['equal_sma_30'] = instrument_df['close_price'].transform(lambda x: x.rolling(window = 30).mean())
+            instrument_df['equal_sma_35'] = instrument_df['close_price'].transform(lambda x: x.rolling(window = 35).mean())
+            instrument_df['equal_sma_40'] = instrument_df['close_price'].transform(lambda x: x.rolling(window = 40).mean())
+            instrument_df['equal_sma_45'] = instrument_df['close_price'].transform(lambda x: x.rolling(window = 45).mean())
+            instrument_df['equal_sma_50'] = instrument_df['close_price'].transform(lambda x: x.rolling(window = 50).mean())
+            instrument_df['equal_sma_55'] = instrument_df['close_price'].transform(lambda x: x.rolling(window = 55).mean())
+            instrument_df['equal_sma_60'] = instrument_df['close_price'].transform(lambda x: x.rolling(window = 60).mean())
 
         # More weights to recent data
         if 'simple_weighted_sma' in target_indicators:
@@ -696,7 +722,6 @@ class HistoricalAnalysis:
                                 position = previous_position
                                 
                     df_filtered.at[row,'position'] = position
-                    # df_filtered.loc[row,position_index] = position
                     previous_position = position
                 df_out = df_out.append(df_filtered)
             df_out['strategy_cat'] = strategy_category
@@ -707,11 +732,3 @@ class HistoricalAnalysis:
         return df_out
 
 
-        
-
-    # def calculate_all_strategies():
-    #     pass
-
-
-# output_data_2.loc[3,'instrument_token'] = 2
-# output_data_2
