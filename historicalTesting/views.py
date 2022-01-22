@@ -241,21 +241,26 @@ class InstrumentDataFetch:
         start_date_dt = datetime.datetime.strptime(start_date,"%Y-%m-%d").date()
         end_date_dt = datetime.datetime.strptime(end_date,"%Y-%m-%d").date()
         diff = (end_date_dt - start_date_dt).days
-        num_loop = diff//6
+        num_loop = diff//6 + 1
+        last_loop = diff%6
+
+
         count = 0
         for i in range(num_loop):
             if i == 0:
                 start = start_date_dt +  datetime.timedelta(days=5*i)
                 end = start_date_dt +  datetime.timedelta(days=5*i + 5)
             else:
-                start = end +  datetime.timedelta(days=1)
-                end = start +  datetime.timedelta(5)
+                if ((i + 1) == num_loop):
+                    start = end +  datetime.timedelta(days=1)
+                    end = start +  datetime.timedelta(last_loop)
+                else:
+                    start = end +  datetime.timedelta(days=1)
+                    end = start +  datetime.timedelta(5)
             InstrumentDataFetch.update_stored_historical_data(token_id,frequency,str(start),str(end),long=True)
             count = count + 1
-            # print(token_id)
             printProgressBar(count,num_loop)
-            # print(token_id,printProgressBar(count,num_loop))
-            # printProgressBar(count,num_loop))
+
 
     def update_stored_historical_data(token_id,frequency,start,end,long=False):
         """
