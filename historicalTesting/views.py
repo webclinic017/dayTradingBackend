@@ -387,65 +387,7 @@ class HistoricalAnalysis:
             calculated_return = (sell_price*num_units)/(get_in_price*num_units)-1
         return calculated_return
     
-    def update_indicator(instrument_token,target_indicators=['simple_weighted_sma','equal_sma']):
-        instrument = trackedInstruments.objects.get(instrument__instrument_token = instrument_token)
-        completeData = HistoricalPricesMinute.objects.filter(instrument= instrument.instrument)
-        instrument_token = instrument.instrument.instrument_token
-        instrument_data = []
-        for data in completeData:
-            instrument_data.append([instrument_token,data.datetime, data.tradedate, data.open_price, data.close_price, data.high_price, data.low_price, data.volume])
 
-        instrument_df = pd.DataFrame(instrument_data, columns = ['instrument_token','datetime','tradedate','open_price', 'close_price','high_price','low_price','volume'])
-        
-        # Minute Return Update
-        if 'return' in target_indicators:
-            instrument_df['minute_return'] = instrument_df.groupby('instrument_token')['close_price'].pct_change() 
-
-        # Simple Moving Averages - Equal Weighted
-        if 'equal_sma' in target_indicators:
-            instrument_df['equal_sma_2'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 2).mean())        
-            instrument_df['equal_sma_3'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 3).mean())        
-            instrument_df['equal_sma_4'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 4).mean())        
-            instrument_df['equal_sma_5'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 5).mean())        
-            instrument_df['equal_sma_10'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 10).mean())
-            instrument_df['equal_sma_15'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 15).mean())
-            instrument_df['equal_sma_20'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 20).mean())
-            instrument_df['equal_sma_25'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 25).mean())
-            instrument_df['equal_sma_30'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 30).mean())
-            instrument_df['equal_sma_35'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 35).mean())
-            instrument_df['equal_sma_40'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 40).mean())
-            instrument_df['equal_sma_45'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 45).mean())
-            instrument_df['equal_sma_50'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 50).mean())
-            instrument_df['equal_sma_55'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 55).mean())
-            instrument_df['equal_sma_60'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 60).mean())
-
-        # More weights to recent data
-        if 'simple_weighted_sma' in target_indicators:
-            instrument_df['weighted_sma_2']  = Wilder(instrument_df['close_price'],2)
-            instrument_df['weighted_sma_3']  = Wilder(instrument_df['close_price'],3)
-            instrument_df['weighted_sma_4']  = Wilder(instrument_df['close_price'],4)
-            instrument_df['weighted_sma_5']  = Wilder(instrument_df['close_price'],5)
-            instrument_df['weighted_sma_10'] = Wilder(instrument_df['close_price'],10)
-            instrument_df['weighted_sma_15'] = Wilder(instrument_df['close_price'],15)
-            instrument_df['weighted_sma_20'] = Wilder(instrument_df['close_price'],20)
-            instrument_df['weighted_sma_25'] = Wilder(instrument_df['close_price'],25)
-            instrument_df['weighted_sma_30'] = Wilder(instrument_df['close_price'],30)
-            instrument_df['weighted_sma_35'] = Wilder(instrument_df['close_price'],35)
-            instrument_df['weighted_sma_40'] = Wilder(instrument_df['close_price'],40)
-            instrument_df['weighted_sma_45'] = Wilder(instrument_df['close_price'],45)
-            instrument_df['weighted_sma_50'] = Wilder(instrument_df['close_price'],50)
-            instrument_df['weighted_sma_55'] = Wilder(instrument_df['close_price'],55)
-            instrument_df['weighted_sma_60'] = Wilder(instrument_df['close_price'],60)
-
-        # SMA Ratio
-            instrument_df['weighted_sma_ratio_15on5'] = instrument_df['weighted_sma_15'] / instrument_df['weighted_sma_5']
-            instrument_df['weighted_sma_ratio_20on5'] = instrument_df['weighted_sma_20'] / instrument_df['weighted_sma_5']
-            instrument_df['weighted_sma_ratio_30on5'] = instrument_df['weighted_sma_30'] / instrument_df['weighted_sma_5']
-            instrument_df['weighted_sma_ratio_10on5'] = instrument_df['weighted_sma_10'] / instrument_df['weighted_sma_5']        
-            instrument_df['weighted_sma_ratio_10on3'] = instrument_df['weighted_sma_10'] / instrument_df['weighted_sma_3']        
-        
-        return instrument_df
-    
     def calculate_returns(position_df,broker="zerodha",num_units = 1,with_fees=True):
         """
         Provide sorted positions dataframes 
@@ -563,7 +505,12 @@ class HistoricalAnalysis:
         count_all = 0
         count_strategy = 0 
         count_token = 0 
-        total_load = tracked_instruments.count() * len(list(strategies.keys()))
+        total_strategies_to_calculate = 0 
+        for strategy in strategies:
+            sub_strategies = strategies[strategy]
+            for sub_strategy in sub_strategies:
+                total_strategies_to_calculate = total_strategies_to_calculate + 1
+
         for instrument in tracked_instruments:
             instrument_token = instrument.instrument.instrument_token
             df = HistoricalAnalysis.update_indicator(instrument_token,list(strategies.keys()))
@@ -578,17 +525,19 @@ class HistoricalAnalysis:
                     else:
                         comparative_summary = comparative_summary.append(daily_summary)
                     count_all = count_all + 1
+                    printProgressBar(count_all,total_strategies_to_calculate)
                 count_strategy = count_strategy + 1
-                printProgressBar(count_strategy,total_load)
             if count_token == 0:
                 df_out = df
             else:
                 df_out = df_out.append(df)
             count_token = count_token + 1
+        
+        
         print('Writing Excel Summary')    
         comparative_summary.reset_index(inplace = True, drop = True)
-        book1 = openpyxl.load_workbook('/Users/shashwatyadav/Desktop/Trading Outputs/TradingOutputSummary.xlsx')
-        writer1 = pd.ExcelWriter('/Users/shashwatyadav/Desktop/Trading Outputs/TradingOutputSummary.xlsx', engine='openpyxl') 
+        book1 = openpyxl.load_workbook('/Users/shashwatyadav/Projects/DayTradingAutomation/TradingOutputSummary.xlsx')
+        writer1 = pd.ExcelWriter('/Users/shashwatyadav/Projects/DayTradingAutomation/TradingOutputSummary.xlsx', engine='openpyxl') 
         writer1.book = book1
         writer1.sheets = dict((ws.title, ws) for ws in book1.worksheets)
         comparative_summary.to_excel(writer1, "Output")
@@ -598,8 +547,8 @@ class HistoricalAnalysis:
             df_out['datetime'] = str(df_out['datetime'])
             df_out['tradedate'] = str(df_out['tradedate'])
             print('Writing Output Data')    
-            book2 = openpyxl.load_workbook('/Users/shashwatyadav/Desktop/Trading Outputs/TradingOutputData.xlsx')
-            writer2 = pd.ExcelWriter('/Users/shashwatyadav/Desktop/Trading Outputs/TradingOutputData.xlsx', engine='openpyxl') 
+            book2 = openpyxl.load_workbook('/Users/shashwatyadav/Projects/DayTradingAutomation/TradingOutputData.xlsx')
+            writer2 = pd.ExcelWriter('/Users/shashwatyadav/Projects/DayTradingAutomation/TradingOutputData.xlsx', engine='openpyxl') 
             writer2.book = book2
             writer2.sheets = dict((ws.title, ws) for ws in book2.worksheets)
             df.to_excel(writer2,"Data")
@@ -612,6 +561,71 @@ class HistoricalAnalysis:
         return output
 
 
+
+    def update_indicator(instrument_token,target_indicators=['simple_weighted_sma','equal_sma']):
+        instrument = trackedInstruments.objects.get(instrument__instrument_token = instrument_token)
+        completeData = HistoricalPricesMinute.objects.filter(instrument= instrument.instrument)
+        instrument_token = instrument.instrument.instrument_token
+        instrument_data = []
+        for data in completeData:
+            instrument_data.append([instrument_token,data.datetime, data.tradedate, data.open_price, data.close_price, data.high_price, data.low_price, data.volume])
+
+        instrument_df = pd.DataFrame(instrument_data, columns = ['instrument_token','datetime','tradedate','open_price', 'close_price','high_price','low_price','volume'])
+        
+        # Minute Return Update
+        if 'return' in target_indicators:
+            instrument_df['minute_return'] = instrument_df.groupby('instrument_token')['close_price'].pct_change() 
+
+        # Simple Moving Averages - Equal Weighted
+        if 'equal_sma' in target_indicators:
+            instrument_df['equal_sma_2'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 2).mean())        
+            instrument_df['equal_sma_3'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 3).mean())        
+            instrument_df['equal_sma_4'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 4).mean())        
+            instrument_df['equal_sma_5'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 5).mean())        
+            instrument_df['equal_sma_10'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 10).mean())
+            instrument_df['equal_sma_15'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 15).mean())
+            instrument_df['equal_sma_20'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 20).mean())
+            instrument_df['equal_sma_25'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 25).mean())
+            instrument_df['equal_sma_30'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 30).mean())
+            instrument_df['equal_sma_35'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 35).mean())
+            instrument_df['equal_sma_40'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 40).mean())
+            instrument_df['equal_sma_45'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 45).mean())
+            instrument_df['equal_sma_50'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 50).mean())
+            instrument_df['equal_sma_55'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 55).mean())
+            instrument_df['equal_sma_60'] = instrument_df.groupby('instrument_token')['close_price'].transform(lambda x: x.rolling(window = 60).mean())
+
+        # More weights to recent data
+        if 'simple_weighted_sma' in target_indicators:
+            instrument_df['weighted_sma_2']  = Wilder(instrument_df['close_price'],2)
+            instrument_df['weighted_sma_3']  = Wilder(instrument_df['close_price'],3)
+            instrument_df['weighted_sma_4']  = Wilder(instrument_df['close_price'],4)
+            instrument_df['weighted_sma_5']  = Wilder(instrument_df['close_price'],5)
+            instrument_df['weighted_sma_10'] = Wilder(instrument_df['close_price'],10)
+            instrument_df['weighted_sma_15'] = Wilder(instrument_df['close_price'],15)
+            instrument_df['weighted_sma_20'] = Wilder(instrument_df['close_price'],20)
+            instrument_df['weighted_sma_25'] = Wilder(instrument_df['close_price'],25)
+            instrument_df['weighted_sma_30'] = Wilder(instrument_df['close_price'],30)
+            instrument_df['weighted_sma_35'] = Wilder(instrument_df['close_price'],35)
+            instrument_df['weighted_sma_40'] = Wilder(instrument_df['close_price'],40)
+            instrument_df['weighted_sma_45'] = Wilder(instrument_df['close_price'],45)
+            instrument_df['weighted_sma_50'] = Wilder(instrument_df['close_price'],50)
+            instrument_df['weighted_sma_55'] = Wilder(instrument_df['close_price'],55)
+            instrument_df['weighted_sma_60'] = Wilder(instrument_df['close_price'],60)
+
+        # SMA Ratio
+            instrument_df['weighted_sma_ratio_20on5'] = instrument_df['weighted_sma_20'] / instrument_df['weighted_sma_5']
+            instrument_df['weighted_sma_ratio_20on3'] = instrument_df['weighted_sma_15'] / instrument_df['weighted_sma_3']
+            instrument_df['weighted_sma_ratio_10on3'] = instrument_df['weighted_sma_10'] / instrument_df['weighted_sma_3']        
+            instrument_df['weighted_sma_ratio_10on5'] = instrument_df['weighted_sma_10'] / instrument_df['weighted_sma_5']        
+            instrument_df['weighted_sma_ratio_5on2'] = instrument_df['weighted_sma_5'] / instrument_df['weighted_sma_2']        
+            instrument_df['weighted_sma_ratio_30on5'] = instrument_df['weighted_sma_30'] / instrument_df['weighted_sma_5']
+            
+        
+        return instrument_df
+        
+
+
+
     strategy_sub_category_dict = {
                             'simple_weighted_sma':{
                                 '20_5':{
@@ -619,16 +633,31 @@ class HistoricalAnalysis:
                                     'down_variable':'weighted_sma_ratio_20on5',
                                     'details':'Weighted SMA 20 on 5 > 1'
                                     },
+                                '20_3':{
+                                    'up_variable': 'weighted_sma_ratio_20on3',
+                                    'down_variable':'weighted_sma_ratio_20on3',
+                                    'details':'Weighted SMA 20 on 3 > 1'
+                                    },   
                                 '10_3':{
                                     'up_variable': 'weighted_sma_ratio_10on3',
                                     'down_variable':'weighted_sma_ratio_10on3',
                                     'details':'Weighted SMA 10 on 3 > 1'
                                     },
+                                '10_5':{
+                                    'up_variable': 'weighted_sma_ratio_10on5',
+                                    'down_variable':'weighted_sma_ratio_10on5',
+                                    'details':'Weighted SMA 10 on 5 > 1'
+                                    },
+                                '5_2':{
+                                    'up_variable': 'weighted_sma_ratio_5on2',
+                                    'down_variable':'weighted_sma_ratio_5on2',
+                                    'details':'Weighted SMA 5 on 2 > 1'
+                                    },
                                 '30_5':{
                                     'up_variable': 'weighted_sma_ratio_30on5',
                                     'down_variable':'weighted_sma_ratio_30on5',
                                     'details':'Weighted SMA 30 on 5 > 1'
-                                    }    
+                                    },
                                 }
                             }
 
